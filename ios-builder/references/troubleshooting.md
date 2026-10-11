@@ -18,6 +18,7 @@
 | E8 | 配额超限 / 90 分钟上限 | 配额 | `builder ios build --unsigned` |
 | E9 | `builder.json` 缺失 / repo 检测失败 | 初始化 | `builder init` |
 | E10 | 旧 workflow 拒绝 profile dispatch | workflow 通道 | `builder init` |
+| E11 | workflow 非法：run 秒退、名字是文件路径、无日志 | Actions 解析 | `gh api repos/{o}/{r}/actions/runs/{id} --jq .name` |
 
 ### E1 设备通道：`No devices found` / 连不上 MobAI
 
@@ -118,6 +119,8 @@ builder dev flutter
 
 - **现象**：Actions 分钟耗尽或工作流被终止：free-plan 上限 90 分钟（含 setup 与
   编译）；冷启动 RN/Expo 构建在免费 runner 上要 30–60 分钟。
+- **先确认仓库可见性**：GitHub 定价页原文 "Minutes are free for public repositories."——
+  **public 仓库的标准 runner（含 macOS）不计费**，别对 public 仓库讲额度；10 倍率只作用于私有仓库计费分钟。
 - **根因**：GitHub Free 私有仓库 2,000 metered 分钟/月，macOS 计费与 Linux 不同；本仓库按常公布的 10 倍估算 ≈200 macOS 分钟 ≈15–20 次 IPA 构建/月——**估算值**，倍率以 GitHub billing 文档与 https://github.com/runner-images 核对。
 - **根因（续）**：替代通道 Codemagic personal 500 macOS M2 分钟/月（Teams 无）、Bitrise Hobby 300 credits/月一个私有 app；"The approximate 800-minute target is not a guaranteed combined quota"。额度跟账号走，Builder 之外的构建同样消耗，也不聚合账单或不兜底零消费。
 - **预防**：当月第 10 次以上构建前提醒用户；优先 `--unsigned`（省 1–2 分钟）。
@@ -151,6 +154,27 @@ builder init
 
 ```bash
 builder init
+```
+
+### E11 workflow 非法（Actions 秒退、没有日志）
+
+- **现象**：push 后 run 几秒内 `conclusion=failure`；**run 的 `name` 显示成
+  `.github/workflows/<file>.yml` 而不是文件里 `name:` 的值**；
+  `GET /actions/runs/{id}/jobs` 返回空数组；`gh run view --log` 没有任何日志；
+  check-run 的 `output.annotations` 也是空的——GitHub 不把解析错误写进日志。
+- **根因**：Actions 的校验比 YAML 语法严格得多（本地 js-yaml / PyYAML 都会通过）。实测两类非法写法：
+  1. `if:` 表达式里引用 `secrets`。官方 contexts 可用性表：
+     `jobs.<job_id>.steps.if` 只给 github、needs、strategy、matrix、job、runner、env、vars、steps、inputs；
+     `jobs.<job_id>.if` 同样没有 secrets。写 `if: ${{ secrets.X != '' }}` → 整份 workflow 解析失败。
+  2. `needs:` 指向本文件里不存在的 job（拆文件做探针时最容易自己踩）。
+- **正确写法**：secrets 通过步骤的 `env:` 映射传进脚本，在脚本里判空分支；
+  作业级开关放仓库 **Variables**（`vars.ENABLE_SIGNED_BUILD == 'true'`），Variables 在 `if` 里可见。
+- **定位手段**：探针 workflow 二分——见 `workflow-yml-anatomy.md`「解析失败的二分定位」。
+- **首条命令**：
+
+```bash
+gh api repos/{owner}/{repo}/actions/runs/{run_id} --jq '.name'
+# 输出等于 workflow 文件路径 => workflow 解析失败，跟构建内容无关
 ```
 
 ## 附：upload / 快照速查（不占 E 码）

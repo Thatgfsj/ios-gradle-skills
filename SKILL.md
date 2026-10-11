@@ -114,7 +114,7 @@ python ios-builder/scripts/init_ios_project.py MyApp -o /path --framework flutte
 
 | 通道 | 公布的免费额度（2026-09） |
 | --- | --- |
-| GitHub Actions | GitHub Free 私有仓库 2,000 计费分钟/月；公共仓库标准 runner 免费。原文只说 macOS 计费与 Linux 不同，**没给倍率** |
+| GitHub Actions | GitHub Free 私有仓库 2,000 计费分钟/月；**public 仓库标准 runner（含 macOS）完全不计费**（定价页原文 "Minutes are free for public repositories."）。原文只说 macOS 计费与 Linux 不同，**没给倍率** |
 | Codemagic | 个人账号 500 macOS M2 分钟/月（Teams 不给） |
 | Bitrise | Hobby 档 300 credits/月，1 个私有 app（实际分钟看机型费率） |
 
@@ -127,7 +127,7 @@ python ios-builder/scripts/init_ios_project.py MyApp -o /path --framework flutte
 RN/Flutter 冷启动 30-60 分钟算的**保守下限**；简单 SwiftUI 工程同一额度能跑一到两个数量级更多。
 Agent 仍要按上限估算，因为决定额度的是用户工程的真实耗时。
 
-Agent 规则：本月第 10 次以上构建前必须先提醒用户额度；能靠热重载验证的改动不要重建；
+Agent 规则：**先确认仓库可见性**——public 仓库不消耗额度，可以直接多轮 CI 迭代，不必反复提醒配额；私有仓库才需要本月第 10 次以上构建前先提醒用户额度；能靠热重载验证的改动不要重建；
 需要快速验证时优先 `builder ios build --unsigned`；
 只改文档或脚本时，靠 `lint`（ubuntu，12 秒）把关即可，不必专门触发一次 macOS 构建。
 核对最新额度：https://github.com/MobAI-App/ios-builder/blob/main/docs/providers.md

@@ -136,4 +136,58 @@ git tag ios-share/my-build && git push origin ios-share/my-build   # 模拟器�
 6. 上游升级后在项目仓库执行 `builder init` 刷新 workflow（发布说明："Existing repositories: run
    builder init once to refresh the workflow files."）。
 
+## 表达式上下文与解析失败（2026-10-11 真实 Tauri iOS workflow 实测）
+
+GitHub 对 workflow 的校验分三层，前两层的通过**不代表**能跑：
+
+| 层 | 谁能查 | 覆盖什么 |
+| --- | --- | --- |
+| YAML 语法 | 本地 `js-yaml` / `pyyaml` | 缩进、重复键、非法字符 |
+| Actions schema | 只有 Actions 自己 | `if:` 可用上下文、`needs:` 指向存在的 job、input 类型 |
+| Shell/构建 | 跑起来才知道 | 路径、scheme、签名 |
+
+已验证的两条 schema 级红线：
+
+1. **`if:` 里不能出现 `secrets`**（`jobs.<job_id>.if` 与 `jobs.<job_id>.steps.if` 都不行）。
+   steps.if 的可用上下文：github、needs、strategy、matrix、job、runner、env、vars、steps、inputs。
+2. **`needs:` 必须指向同一文件里存在的 job**；把某个 job 单独摘出来做实验时，
+   要么删掉 `needs:`，要么补一个 stub job 顶着，否则实验本身也"非法"，白跑一轮。
+
+### 解析失败的识别（无日志时的判据）
+
+```bash
+gh api repos/{owner}/{repo}/actions/runs/{RUN_ID} --jq '.name'
+# 名字 == workflow 文件路径  =>  解析失败，与构建内容无关
+gh api repos/{owner}/{repo}/actions/runs/{RUN_ID}/jobs --jq '.jobs | length'
+# 0  =>  一个 job 都没实例化，进一步确认在解析层而不是构建层
+```
+
+### 解析失败的二分定位
+
+思路：把可疑片段各自写成**只监听自己路径**的探针 workflow，一次提交全投，
+一轮就能读出"哪一段非法"；探针里的 macOS runner 一律换成 ubuntu，几秒出结论，
+不占真机额度。
+
+```yaml
+# .github/workflows/ios-probe-4.yml —— 只测 ios-unsigned 这个 job 能不能被解析
+name: PROBE-4
+on:
+  push:
+    paths: [".github/workflows/ios-probe-4.yml"]   # 关键：只被自己触发
+permissions:
+  contents: read
+jobs:
+  _stub:                                           # 给 needs 一个真实存在的目标
+    runs-on: ubuntu-latest
+    steps: [{ run: echo stub }]
+  ios-unsigned:
+    needs: _stub
+    runs-on: ubuntu-latest                         # 解析检查不需要真机
+```
+
+按 `gh run list --json name` 读结论：显示 `PROBE-4` = 该段合法；显示文件路径 = 该段非法。
+定位到 job 后再按 step 切第二轮。**探针文件用完必须删掉**：Git Data API 的删除条目
+（`sha: null`）只能对**当前 tree 里存在**的路径使用，重复删除会返回
+`GitRPC::BadObjectState`。
+
 排错入口：`ios-builder/references/troubleshooting.md`；签名流程：`ios-builder/references/code-signing.md`。
