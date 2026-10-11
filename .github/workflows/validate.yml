@@ -23,7 +23,7 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-python@v5
         with:
@@ -115,7 +115,7 @@ jobs:
     outputs:
       needs-macos: ${{ steps.filter.outputs.needs-macos }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -155,7 +155,7 @@ jobs:
     needs: [lint, changes]
     if: needs.changes.outputs.needs-macos == 'true'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Select Xcode
         uses: maxim-lobanov/setup-xcode@v1
@@ -216,7 +216,7 @@ jobs:
     runs-on: macos-15
     needs: [changes, build-example]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Require ACTIONS_BUILDER_TOKEN
         env:
