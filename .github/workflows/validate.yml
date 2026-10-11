@@ -130,7 +130,7 @@ jobs:
           ls -la dist
 
       - name: Upload unsigned IPA
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: example-unsigned-ipa
           path: examples/basic-swiftui-app/dist/*.ipa
@@ -191,7 +191,7 @@ jobs:
         run: builder ios build --unsigned
 
       - name: Upload remote-built IPA
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: builder-e2e-ipa
           path: examples/basic-swiftui-app/dist/*.ipa
