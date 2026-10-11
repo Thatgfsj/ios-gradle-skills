@@ -148,8 +148,13 @@ ios-gradle-skills/
 
 - **lint**（ubuntu）：Python 语法、JSON/YAML 可解析、`ios-builder/scripts/ops/lint_skill.py`
   校验 SKILL.md frontmatter / 命令矩阵 / references 路由 / 示例工程 pbxproj 结构
-- **build-example**（`macos-15`）：用 xcodebuild 真实编译 `examples/basic-swiftui-app`，
-  打成 Unsigned IPA 并上传 artifact
+  （含 `selftest_lint.py`：注入 18 种工程缺陷，断言每条检查都能抓到）
+- **changes**（ubuntu）：判定本次改动值不值得花 macOS 额度——只改文档
+  （`SKILL.md` / `README.md` / `CONTRIBUTING.md` / `LICENSE` / `secrets.example.md` /
+  `ios-builder/references/**`）就跳过 macOS job；拿不到 diff 基线时一律照跑
+- **build-example**（`macos-15`，由 `changes` 门控）：用 xcodebuild 真实编译
+  `examples/basic-swiftui-app`，打成 Unsigned IPA 并上传 artifact。
+  2026-10-11 实测：编译 28 秒，整个 job 41 秒，产物 39 KB
 - **builder-e2e**（可选，默认关闭）：装 `builder` 后走完整远程通道；
   因需要交互式 GitHub 授权且会向同一仓库推快照 ref，只在仓库 Variable
   `ENABLE_BUILDER_E2E=true` 且提供 `secrets.ACTIONS_BUILDER_TOKEN` 时运行

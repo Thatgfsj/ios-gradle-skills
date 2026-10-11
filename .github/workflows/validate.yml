@@ -1,7 +1,8 @@
 # 校验本仓库内容的有效性，并真实构建 examples/basic-swiftui-app。
 #
 # 三个 job：
-#   lint          —— ubuntu 上跑：Python 语法、YAML/JSON 可解析、SKILL.md 规范自检
+#   lint          —— ubuntu 上跑：Python 语法、YAML/JSON 可解析、SKILL.md 规范自检、校验器自检
+#   changes       —— ubuntu 上判定本次改动是否值得花 macOS 额度（纯文档则跳过）
 #   build-example —— macos-15 上用 xcodebuild 真实编译示例并产出 Unsigned IPA
 #   builder-e2e   —— 可选：装 builder CLI 走完整远程通道（默认关闭，见下方说明）
 #
@@ -107,9 +108,52 @@ jobs:
           test -f "$RUNNER_TEMP/swiftui/SmokeApp/.github/workflows/ios-build.yml"
           grep -q "runs-on: macos-15" "$RUNNER_TEMP/swiftui/SmokeApp/.github/workflows/ios-build.yml"
 
+  changes:
+    # 判断这次改动是否需要花 macOS 额度。纯文档（SKILL.md / README / references / secrets 示例）
+    # 只要 lint 把关即可；拿不到 diff 基线时一律返回 true——宁可多花额度，也不能漏掉真验证。
+    runs-on: ubuntu-latest
+    outputs:
+      needs-macos: ${{ steps.filter.outputs.needs-macos }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 判定是否需要 macOS 构建
+        id: filter
+        env:
+          BEFORE: ${{ github.event.before }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          BASE="${BEFORE:-}"
+          [ -z "$BASE" ] && BASE="${BASE_SHA:-}"
+          if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
+            echo "needs-macos=true" >> "$GITHUB_OUTPUT"
+            echo "拿不到 diff 基线（新分支/首次推送）→ 照跑 macOS 构建"
+            exit 0
+          fi
+          git diff --name-only "$BASE" HEAD > "$RUNNER_TEMP/changed.txt" || true
+          NEEDS=$(python - <<'PY'
+          import os, pathlib, re
+          docs_only = re.compile(
+              r"^(SKILL\.md|README\.md|CONTRIBUTING\.md|LICENSE|"
+              r"\.github/secrets\.example\.md|ios-builder/references/.*)$")
+          files = [l.strip() for l in
+                   pathlib.Path(os.environ["RUNNER_TEMP"], "changed.txt")
+                   .read_text(encoding="utf-8").splitlines() if l.strip()]
+          # 空 diff 或含任何非文档文件 → true（宁可多花额度，不能漏掉真验证）
+          print("false" if files and all(docs_only.match(f) for f in files) else "true")
+          PY
+          )
+          echo "needs-macos=$NEEDS" >> "$GITHUB_OUTPUT"
+          echo "本次改动是否只涉及文档 → needs-macos=$NEEDS"
+          sed 's/^/  - /' "$RUNNER_TEMP/changed.txt"
+
   build-example:
     runs-on: macos-15
-    needs: lint
+    needs: [lint, changes]
+    if: needs.changes.outputs.needs-macos == 'true'
     steps:
       - uses: actions/checkout@v4
 
@@ -168,9 +212,9 @@ jobs:
   builder-e2e:
     # 可选：走完整 builder 远程通道。仅在显式打开时运行（见文件头注释）。
     # 注意：jobs.<job_id>.if 里拿不到 secrets 上下文，所以 token 缺失由下面第一步显式拦下。
-    if: ${{ vars.ENABLE_BUILDER_E2E == 'true' }}
+    if: ${{ vars.ENABLE_BUILDER_E2E == 'true' && needs.changes.outputs.needs-macos == 'true' }}
     runs-on: macos-15
-    needs: build-example
+    needs: [changes, build-example]
     steps:
       - uses: actions/checkout@v4
 
