@@ -6,7 +6,7 @@ description: >
   适用于 Windows / Linux / macOS 上无 Mac 环境的 iOS 构建需求。
   不要用于纯本机 xcodebuild 或 Android Gradle 任务。
 metadata:
-  author: your-org
+  author: Thatgfsj
   version: "1.0"
   keywords: [ios, xcodebuild, ipa, builder, mobai, flutter, react-native, github-actions]
 ---
@@ -160,4 +160,4 @@ Agent 规则：本月第 10 次以上构建前必须先提醒用户额度；能�
 - ios-builder 上游：https://github.com/MobAI-App/ios-builder
 
 ---
-Source: https://github.com/your-org/ios-gradle-skills
+Source: https://github.com/Thatgfsj/ios-gradle-skills

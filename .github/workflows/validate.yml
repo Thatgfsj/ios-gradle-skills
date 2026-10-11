@@ -137,7 +137,7 @@ jobs:
           NEEDS=$(python - <<'PY'
           import os, pathlib, re
           docs_only = re.compile(
-              r"^(SKILL\.md|README\.md|CONTRIBUTING\.md|LICENSE|"
+              r"^(SKILL\.md|README\.md|CONTRIBUTING\.md|LICENSE|claw-skill\.yaml|"
               r"\.github/secrets\.example\.md|ios-builder/references/.*)$")
           files = [l.strip() for l in
                    pathlib.Path(os.environ["RUNNER_TEMP"], "changed.txt")

@@ -1,7 +1,7 @@
 # ios-gradle-skills
 
-![Build Status](https://img.shields.io/github/actions/workflow/status/your-org/ios-gradle-skills/validate.yml?branch=main)
-![License](https://img.shields.io/github/license/your-org/ios-gradle-skills)
+![Build Status](https://img.shields.io/github/actions/workflow/status/Thatgfsj/ios-gradle-skills/validate.yml?branch=main)
+![License](https://img.shields.io/github/license/Thatgfsj/ios-gradle-skills)
 ![builder](https://img.shields.io/badge/ios--builder-v0.11.0-blue)
 ![iOS](https://img.shields.io/badge/iOS-17.0-blue)
 
