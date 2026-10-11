@@ -6,6 +6,8 @@
 //  对应 SKILL.md「标准技术栈」：SwiftUI + 最低 iOS 17.0。
 //
 
+// @Observable 来自 Observation；SwiftUI 是否再导出该模块随 SDK 版本变化，显式导入最稳
+import Observation
 import SwiftUI
 
 @Observable

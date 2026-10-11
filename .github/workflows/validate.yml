@@ -36,13 +36,17 @@ jobs:
             ios-builder/scripts/ai/patch_builder_config.py \
             ios-builder/scripts/ops/trigger_build.py \
             ios-builder/scripts/ops/check_signing_secrets.py \
-            ios-builder/scripts/ops/lint_skill.py
+            ios-builder/scripts/ops/lint_skill.py \
+            ios-builder/scripts/ops/selftest_lint.py
 
       - name: 安装依赖
         run: pip install pyyaml
 
       - name: SKILL.md 规范与命令矩阵自检
         run: python ios-builder/scripts/ops/lint_skill.py
+
+      - name: 校验「校验器」本身有效（注入缺陷必须被抓住）
+        run: python ios-builder/scripts/ops/selftest_lint.py
 
       - name: JSON / YAML 可解析
         run: |

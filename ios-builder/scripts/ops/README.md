@@ -8,6 +8,7 @@
 | --- | --- | --- | --- |
 | `lint_skill.py` | 校验 SKILL.md 规范、命令矩阵、references 路由、错误码与示例工程 pbxproj 结构 | 无（有 pyyaml 时更深） | `python ios-builder/scripts/ops/lint_skill.py` |
 | `trigger_build.py` | 无 builder CLI 时触发 workflow、轮询 run、把 `ipa` artifact 落到 `./dist/` | `gh` 或 `GITHUB_TOKEN` | `python trigger_build.py --project /path/to/MyApp --unsigned` |
+| `selftest_lint.py` | 往临时副本里注入 18 种工程缺陷，断言 `lint_skill.py` 每条检查都能抓到（防止“看起来通过”的空转检查） | 无 | `python ios-builder/scripts/ops/selftest_lint.py -v` |
 | `check_signing_secrets.py` | 查签名集合是否齐、本地 p12/mobileprovision 是否可用、类型与 distribution 是否匹配 | `gh` 或 `GITHUB_TOKEN`；可选 `openssl` | `python check_signing_secrets.py --project . --distribution store` |
 
 ## 与 builder CLI 的分工

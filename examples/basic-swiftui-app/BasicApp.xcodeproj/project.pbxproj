@@ -329,4 +329,5 @@
 		};
 /* End XCConfigurationList section */
 	};
+	rootObject = A10000000000000000000001 /* Project object */;
 }

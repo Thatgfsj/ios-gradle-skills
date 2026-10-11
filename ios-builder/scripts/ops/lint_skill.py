@@ -429,7 +429,21 @@ def check_xcodeproj(root: Path) -> None:
             if bare.count(opener) != bare.count(closer):
                 fail("xcodeproj", f"{label} {name}不配平：{bare.count(opener)} vs {bare.count(closer)}")
 
+        # Xcode 的 loader 只认这四件顶层键；缺 rootObject 时报的是
+        # "Failed to load project ... for an unknown reason"，没有任何线索指向缺失的键。
+        for key in ("archiveVersion", "objectVersion", "objects", "rootObject"):
+            if not re.search(r"^\t" + key + r"\s*=", text, re.M):
+                fail("xcodeproj", f"{label} 缺顶层 {key}（Xcode 会拒绝加载工程）")
+
         defined = set(re.findall(r"^\s{2}([0-9A-F]{24})\b[^\n=]*=\s*\{", text, re.M))
+        # 每个对象的定义体（pbxproj 既有单行式也有多行式定义），供 scheme 交叉校验用
+        objs = {}
+        for oid, obody in re.findall(
+                r"^\t{2}([0-9A-F]{24})(?: /\* [^*]* \*/)? = \{\n(.*?)\n\t{2}\};", text, re.S | re.M):
+            objs[oid] = obody
+        for oid, obody in re.findall(
+                r"^\t{2}([0-9A-F]{24})(?: /\* [^*]* \*/)? = \{([^\n]*?)\};", text, re.M):
+            objs.setdefault(oid, obody)
         used = set(ID_RE.findall(text))
         dangling = sorted(used - defined)
         if dangling:
@@ -448,17 +462,76 @@ def check_xcodeproj(root: Path) -> None:
 
         for scheme in sorted(xcodeproj.glob("xcshareddata/xcschemes/*.xcscheme")):
             body = scheme.read_text(encoding="utf-8")
-            bids = set(re.findall(r'BlueprintIdentifier="([0-9A-F]{24})"', body))
-            bad = sorted(b for b in bids if b not in defined)
-            if bad:
-                fail("xcodeproj", f"{scheme.name} 的 BlueprintIdentifier 在 pbxproj 里不存在：{bad}")
-            names = set(re.findall(r'BlueprintName="([^"]+)"', body))
+            refs = re.findall(r"<BuildableReference\b(.*?)</BuildableReference>", body, re.S)
+            if not refs:
+                refs = re.findall(r"<BuildableReference\b([^>]*)/?>", body)
+            if not refs:
+                fail("xcodeproj", f"{scheme.name} 里没有任何 BuildableReference")
+            bids = []
+            for idx, ref in enumerate(refs, 1):
+                found = re.search(r'BlueprintIdentifier\s*=\s*"([0-9A-F]{24})"', ref)
+                if not found:
+                    fail("xcodeproj", f"{scheme.name} 第 {idx} 个 BuildableReference 没有 "
+                                      f"BlueprintIdentifier，Xcode 无法定位 target")
+                    continue
+                bids.append(found.group(1))
+            for bid in sorted(set(bids)):
+                block = objs.get(bid)
+                if block is None:
+                    fail("xcodeproj", f"{scheme.name} 的 BlueprintIdentifier={bid} 在 pbxproj 里不存在")
+                elif "isa = PBXNativeTarget;" not in block:
+                    isa = re.search(r"isa = (\w+);", block)
+                    fail("xcodeproj", f"{scheme.name} 的 BlueprintIdentifier={bid} 指向 "
+                                      f"{isa.group(1) if isa else '无 isa'}，scheme 必须指向 PBXNativeTarget")
+            # BuildableName 必须等于 target 的 productReference 文件名，否则 Xcode
+            # 会在 scheme 里显示"找不到可运行目标"，headless 构建 -scheme 也选不到产物
+            for bid, bname in re.findall(
+                    r'BlueprintIdentifier\s*=\s*"([0-9A-F]{24})"[^>]*?BuildableName\s*=\s*"([^"]+)"', body):
+                prod = re.search(r"productReference = ([0-9A-F]{24})", objs.get(bid, ""))
+                if not prod:
+                    continue
+                path_m = re.search(r"\bpath = ([^;]+);", objs.get(prod.group(1), ""))
+                if not path_m:
+                    fail("xcodeproj", f"{scheme.name} 找不到产物 {prod.group(1)} 的 path")
+                    continue
+                want = path_m.group(1).strip().strip('"')
+                if want != bname:
+                    fail("xcodeproj", f"{scheme.name} 的 BuildableName={bname} 与产物 {want} 不一致")
+            names = set(re.findall(r'BlueprintName\s*=\s*"([^"]+)"', body))
             missing = sorted(n for n in names if not re.search(
                 r"isa = PBXNativeTarget;.*?name = " + re.escape(n) + r";", text, re.S))
             if missing:
                 fail("xcodeproj", f"{scheme.name} 指向的 target 名在 pbxproj 里不存在：{missing}")
 
+        root_m = re.search(r"^\trootObject = ([0-9A-F]{24})", text, re.M)
+        if root_m:
+            rid = root_m.group(1)
+            if rid not in defined:
+                fail("xcodeproj", f"{label} rootObject={rid} 指向未定义对象")
+            elif "isa = PBXProject" not in text.split(rid + " /* Project object */ = {", 1)[-1][:200]:
+                fail("xcodeproj", f"{label} rootObject 指向的不是 PBXProject")
+        projects = re.findall(r"isa = PBXProject;", text)
+        if len(projects) != 1:
+            fail("xcodeproj", f"{label} PBXProject 数量应为 1，实际 {len(projects)}")
+        for key in ("mainGroup", "buildConfigurationList", "productRefGroup", "knownRegions"):
+            if not re.search(r"^\t{3}" + key + r"\s*=", text, re.M):
+                fail("xcodeproj", f"{label} PBXProject 缺 {key}")
+        if not re.search(r"^\t{3}targets = \(\n\s*[0-9A-F]{24}", text, re.M):
+            fail("xcodeproj", f"{label} PBXProject.targets 为空")
+        blocks = re.findall(r"^\t{2}\S.*?= \{\n(.*?)\n\t{2}\};", text, re.S | re.M)
+        targets = [b for b in blocks if "isa = PBXNativeTarget;" in b]
+        if not targets:
+            fail("xcodeproj", f"{label} 没有任何 PBXNativeTarget")
+        for idx, block in enumerate(targets, 1):
+            for key in ("buildConfigurationList", "buildPhases", "productReference",
+                        "productType", "name", "productName"):
+                if not re.search(r"^\t{3}" + key + r"\s*=", block, re.M):
+                    fail("xcodeproj", f"{label} 第 {idx} 个 PBXNativeTarget 缺 {key}")
+
         bundle_ids = set(re.findall(r"PRODUCT_BUNDLE_IDENTIFIER = ([^;]+);", text))
+        if len(bundle_ids) > 1:
+            fail("xcodeproj", f"{label} 各 configuration 的 PRODUCT_BUNDLE_IDENTIFIER 不一致："
+                              f"{sorted(bundle_ids)}（builder 只读一个值，装机后可能装出两份 app）")
         cfg = proj_dir / "builder.json"
         if cfg.is_file():
             try:
@@ -468,8 +541,13 @@ def check_xcodeproj(root: Path) -> None:
             if want and bundle_ids and want not in bundle_ids:
                 fail("xcodeproj", f"{label} 的 PRODUCT_BUNDLE_IDENTIFIER {sorted(bundle_ids)} "
                                   f"与 builder.json 的 ios.bundleId={want} 不一致")
-            elif want:
-                ok("xcodeproj", f"{label} bundle id 与 builder.json 一致：{want}")
+            elif want and bundle_ids:
+                offenders = sorted(b for b in bundle_ids if b != want)
+                if offenders:
+                    fail("xcodeproj", f"{label} 有 configuration 的 PRODUCT_BUNDLE_IDENTIFIER="
+                                      f"{offenders} 与 builder.json 的 ios.bundleId={want} 不一致")
+                else:
+                    ok("xcodeproj", f"{label} bundle id 与 builder.json 一致：{want}")
     if not found:
         warn("xcodeproj", "没找到任何 project.pbxproj（examples/ 下应有一个可构建工程）")
 

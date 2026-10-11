@@ -66,7 +66,12 @@
 
    ```bash
    python ios-builder/scripts/ops/lint_skill.py
+   python ios-builder/scripts/ops/selftest_lint.py     # 只有改过校验器/工程模板时才必须
    ```
+
+   `selftest_lint.py` 往临时副本注入 18 种工程缺陷（缺 `rootObject`、悬空对象 ID、
+   scheme 指错 target……），断言 `lint_skill.py` 每条检查都能抓到。
+   写错的规则会让检查**静默空转**——"本地 lint 全绿、Xcode 却拒绝加载工程"就是这么漏出去的。
 
 3. 用清晰的 commit message 提交，PR 里说明动机与验证方式
 

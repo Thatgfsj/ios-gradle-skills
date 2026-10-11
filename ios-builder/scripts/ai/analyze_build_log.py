@@ -38,7 +38,7 @@ from pathlib import Path
 # 规则表：E 码与 ios-builder/references/troubleshooting.md 的错误码索引一一对应
 # （E1 设备 / E2 产物 / E3 签名 / E4 签名配置 / E5 Flutter / E6 Metro /
 #  E7 原生层 / E8 配额与超时 / E9 初始化 / E10 workflow 通道）。
-# SRC 与 ASC 是**非通道**问题（源码编译、App Store Connect 侧），故意不占 E 码。
+# SRC/ASC/PRJ 是**非通道**问题（源码编译、App Store Connect 侧、工程文件本身损坏），故意不占 E 码。
 # 只允许使用上游文档里出现过的字符串与关键词形态。
 RULES = [
     (r"No devices found", "E1",
@@ -56,6 +56,10 @@ RULES = [
     (r"Connection refused|dial tcp.*(8686|localhost)|no route to host|nodename nor servname|Name or service not known",
      "E1", "builder 连不到 MobAI API（WSL 网络模式或 mobai.url 写错）",
      "builder mobai ping   # WSL NAT 下先 hostname.exe 取主机名，再在 MobAI 打开 Allow external connections"),
+    (r"Unable to read project|Failed to load project|Project .* could not be loaded|does not contain an Xcode project",
+     "PRJ", "xcodeproj 加载失败：常见原因是 pbxproj 缺 rootObject、对象 ID 悬空或 section 不配对"
+            "（手写/渲染工程专有，非通道问题）",
+     "python ios-builder/scripts/ops/lint_skill.py"),
     (r"BUILD FAILED|\*\* BUILD FAILED \*\*", "E2",
      "xcodebuild 未产出 .app，因此没有 IPA",
      "python ios-builder/scripts/ai/analyze_build_log.py build.log --project ."),

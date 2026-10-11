@@ -126,6 +126,10 @@ capabilities:
       - path: ios-builder/scripts/ops/lint_skill.py
         args:
           - skill_dir
+      - path: ios-builder/scripts/ops/selftest_lint.py
+        description: Inject 18 known project-file defects into a temp copy and assert every lint check fires
+        flags:
+          - --verbose
 
   - name: remote-build-cli
     description: The upstream builder CLI commands this skill routes to (install it separately)

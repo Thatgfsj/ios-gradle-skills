@@ -161,6 +161,7 @@ builder init
 | `Missing Compliance` | 出口合规未回答 | `ITSAppUsesNonExemptEncryption=false` 时 `builder ios upload --wait` 自动回答，否则传 `--no-encryption` |
 | 提交被拒并提示 "drop --unsigned" | `--unsigned` 与 `--submit` 互斥 | 二者去掉一个再执行 `builder ios upload` |
 | 快照隐藏 ref 残留 | `refs/ios-builder/jobs/<build-id>` 占远端 | `git push origin --delete refs/ios-builder/jobs/<build-id>` |
+| `xcodebuild: error: Unable to read project 'X.xcodeproj'` / `Failed to load project … for an unknown reason` | **工程文件本身**坏掉：手写或渲染出的 `project.pbxproj` 缺顶层 `rootObject`、对象 ID 悬空、`section` 不配对（Xcode 不会告诉你缺哪个键） | `python ios-builder/scripts/ops/lint_skill.py`（结构校验）＋ `python ios-builder/scripts/ops/selftest_lint.py`（确认校验本身有效） |
 
 ## 本仓库与上游差异注记
 
@@ -168,3 +169,6 @@ builder init
 - `仓库缺少 builder.json` 是本仓库模板中文文案；macOS 10 倍计费与
   `reactNative.metroPort`（上游 README 未文档化）均按本手册口径标注。
 - 提交文档改动前跑 `python ios-builder/scripts/ops/lint_skill.py` 校验 E 码引用。
+- 改过 `lint_skill.py` 的工程校验逻辑后，再跑一次 `selftest_lint.py`：
+  正则写错会让检查静默空转（本项目踩过：`BlueprintIdentifier="X"` 少了等号两侧空格，
+  三条 scheme 检查全都“通过”却什么都没校验）。
