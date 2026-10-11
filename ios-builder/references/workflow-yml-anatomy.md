@@ -13,7 +13,7 @@
 | 触发 1 | `workflow_dispatch`（CLI 可达时的主通道） |
 | 触发 2 | `push: tags: ['ios-build/*']`（仅 Git 通道） |
 | `permissions` | `contents: write # deletes the trigger tag` |
-| `runs-on` | `macos-latest`（上游未用 macos-15；本仓库模板固定 `macos-15`，见文末） |
+| `runs-on` | `macos-latest`（上游未用 macos-15；本仓库模板固定 `macos-15`，见文末。2026-10-11 CI 实测 `macos-15` 可用，预装 Xcode 26.3 / iPhoneOS 26.2 SDK） |
 | `timeout-minutes` | `90`，模板注释原由："a cold React Native/Expo build on the free runner takes 30-60 minutes"；GitHub 免费档对 workflow 同样封顶 90 分钟（含 setup 与编译） |
 
 ## 10 个 workflow_dispatch inputs

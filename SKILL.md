@@ -21,7 +21,7 @@ iOS 构建知识库：远程 xcodebuild 通道、builder.json 单一配置源、
 
 | 类别 | 取值 |
 |------|------|
-| 语言 | Swift 6.2 语言模式（需 Xcode 26+ 工具链；镜像停在 16.x 时按 6.0 编译） |
+| 语言 | Swift 6.2 语言模式（需 Xcode 26+；2026-10-11 实测 `macos-15` 镜像已带 Xcode 26.3 + iPhoneOS 26.2 SDK，模板默认仍写 6.0 以兼容旧镜像） |
 | UI 框架 | SwiftUI（最低 iOS 17）/ 兼容 UIKit 桥接 |
 | 最低支持 | iOS 17.0 |
 | 构建系统 | xcodebuild + GitHub Actions macOS runner（上游模板 `macos-latest`，本仓库模板钉 `macos-15`） |
@@ -122,8 +122,14 @@ python ios-builder/scripts/init_ios_project.py MyApp -o /path --framework flutte
 约 200 macOS 分钟/月 ≈ **15-20 次 IPA 构建/月**；冷启动的 RN/Expo 构建单次就要 30-60 分钟。
 免费档单个 workflow 上限 90 分钟（含装依赖与编译）。
 
+**2026-10-11 本仓库 CI 实测**：`examples/basic-swiftui-app` 的 unsigned xcodebuild 用时 **28 秒**
+（整个 macOS job 41 秒，产物 39 KB），`lint` job 12 秒。所以"15-20 次/月"是按上游给出的
+RN/Flutter 冷启动 30-60 分钟算的**保守下限**；简单 SwiftUI 工程同一额度能跑一到两个数量级更多。
+Agent 仍要按上限估算，因为决定额度的是用户工程的真实耗时。
+
 Agent 规则：本月第 10 次以上构建前必须先提醒用户额度；能靠热重载验证的改动不要重建；
-需要快速验证时优先 `builder ios build --unsigned`。
+需要快速验证时优先 `builder ios build --unsigned`；
+只改文档或脚本时，靠 `lint`（ubuntu，12 秒）把关即可，不必专门触发一次 macOS 构建。
 核对最新额度：https://github.com/MobAI-App/ios-builder/blob/main/docs/providers.md
 
 ## 知识库路由（References）
