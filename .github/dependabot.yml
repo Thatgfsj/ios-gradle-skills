@@ -1,0 +1,9 @@
+version: 2
+updates:
+  # 上游 builder CLI 与 Xcode 版本不进包管理器，靠人工按 references 的"数据截至"更新；
+  # 这里只让 Dependabot 盯 workflow 里用到的 action。
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5

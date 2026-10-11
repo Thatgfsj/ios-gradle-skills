@@ -1,0 +1,30 @@
+# iOS / 构建产物
+dist/
+*.ipa
+*.dSYM.zip
+xcuserdata/
+DerivedData/
+build/
+ios/build/
+ios/Pods/
+
+# 签名材料
+*.p12
+*.key
+*.cer
+*.csr
+*.mobileprovision
+ios-signing-*
+AuthKey_*.p8
+
+# JS 依赖与 Metro 缓存
+node_modules/
+metro-out/
+.watchmanconfig
+.tmp/
+
+# 本地密钥
+.env
+*.local.json
+*.log
+.DS_Store

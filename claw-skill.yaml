@@ -1,0 +1,208 @@
+name: ios-gradle-skills
+version: 1.0.0
+description: >
+  iOS build skill pack (OpenClaw / agent-skills format) on top of MobAI ios-builder v0.11.0:
+  remote xcodebuild IPA builds on GitHub Actions macOS runners, code signing sets,
+  Flutter / React Native hot reload through MobAI, project scaffolding and a troubleshooting
+  code table. Data as of 2026-09.
+triggers:
+  - "iOS打包"
+  - "构建IPA"
+  - "xcodebuild"
+  - "builder ios build"
+  - "iOS签名"
+  - "provisioning profile"
+  - "p12"
+  - "builder signing"
+  - "iOS CI"
+  - "GitHub Actions iOS"
+  - "免Mac打包"
+  - "Flutter iOS"
+  - "RN iOS 热重载"
+  - "builder dev"
+  - "MobAI"
+  - "builder.json"
+  - "新建iOS项目"
+  - "iOS脚手架"
+
+anti_triggers:
+  - "纯本机 xcodebuild（不借助远程 runner）"
+  - "Android Gradle / AGP 任务（用 android-gradle-skills）"
+
+capabilities:
+  - name: project-generation
+    description: Generate a build-ready iOS project (SwiftUI + xcodeproj + builder.json + workflow) from templates/
+    scripts:
+      - path: ios-builder/scripts/init_ios_project.py
+        args:
+          - name
+          - target
+        flags:
+          - --output
+          - --framework
+          - --unsigned
+          - --org
+          - --bundle-id
+          - --ios-min
+          - --swift-version
+          - --scheme
+          - --owner
+          - --repo
+          - --force
+          - --interactive
+
+  - name: config-detection-and-patching
+    description: Detect the project form (native / RN / Expo / Flutter / KMP / Cordova) and emit a builder.json patch
+    scripts:
+      - path: ios-builder/scripts/ai/patch_builder_config.py
+        flags:
+          - --project
+          - --framework
+          - --scheme
+          - --bundle-id
+          - --ios-path
+          - --unsigned
+          - --signing
+          - --profile
+          - --owner
+          - --repo
+          - --mobai-url
+          - --metro-port
+          - --create
+          - --write
+          - --detect-only
+
+  - name: remote-build-analysis
+    description: Map a remote build log to troubleshooting error codes E1-E10 with the first fix command
+    scripts:
+      - path: ios-builder/scripts/ai/analyze_build_log.py
+        args:
+          - log
+        flags:
+          - --json
+          - --project
+          - --max-hits
+          - --strict
+
+  - name: remote-build-trigger
+    description: Dispatch ios-build.yml, poll the run and download the ipa artifact into ./dist when the builder CLI is unavailable (builds the committed ref, not the working tree)
+    scripts:
+      - path: ios-builder/scripts/ops/trigger_build.py
+        flags:
+          - --project
+          - --workflow
+          - --ref
+          - --profile
+          - --unsigned
+          - --configuration
+          - --build-number
+          - --timeout
+          - --dist-dir
+          - --no-wait
+          - --tag-fallback
+          - --download-only
+          - --dry-run
+          - --json
+
+  - name: signing-readiness-check
+    description: Verify the signing set secrets exist on the repo and that local p12/mobileprovision match the chosen distribution
+    scripts:
+      - path: ios-builder/scripts/ops/check_signing_secrets.py
+        flags:
+          - --project
+          - --distribution
+          - --profile
+          - --owner
+          - --repo
+          - --p12
+          - --password
+          - --profile-file
+          - --local-only
+          - --json
+
+  - name: skill-validation
+    description: Lint SKILL.md frontmatter, command matrix, reference routing and the example xcodeproj
+    scripts:
+      - path: ios-builder/scripts/ops/lint_skill.py
+        args:
+          - skill_dir
+
+  - name: remote-build-cli
+    description: The upstream builder CLI commands this skill routes to (install it separately)
+    commands:
+      - builder auth github
+      - builder init
+      - builder ios build --unsigned
+      - builder ios build
+      - builder ios build --profile store
+      - builder ios share
+      - builder signing setup
+      - builder dev flutter
+      - builder dev rn
+      - builder mobai ping
+
+configuration_source: builder/builder.template.json
+workflow_template: builder/ios-build.yml.template
+
+references:
+  - path: ios-builder/references/framework-detection.md
+    description: Detect native / RN / Expo / Flutter / KMP / Cordova projects and their ios.path + scheme defaults
+  - path: ios-builder/references/builder-json-schema.md
+    description: Every builder.json field, default, profile/distribution rules and WSL-specific settings
+  - path: ios-builder/references/workflow-yml-anatomy.md
+    description: Section-by-section reading of ios-build.yml, the 10 dispatch inputs, signing injection and snapshot refs
+  - path: ios-builder/references/code-signing.md
+    description: p12 / mobileprovision paths, base64 encoding, secret sets, unsigned fallback and MobAI re-signing
+  - path: ios-builder/references/flutter-hot-reload.md
+    description: builder dev flutter lifecycle, skip-install with team-id suffix, watch config and when a rebuild is mandatory
+  - path: ios-builder/references/react-native-hot-reload.md
+    description: Metro lifecycle, same-WiFi requirement, metro port, Fast Refresh conditions
+  - path: ios-builder/references/mobai-device-bridge.md
+    description: MobAI install, WSL mirrored vs NAT networking, mobai commands, physical-device vs simulator limits
+  - path: ios-builder/references/troubleshooting.md
+    description: Error code table E1-E10 with root cause and one-line fix per entry
+
+secrets_documentation: .github/secrets.example.md
+
+examples:
+  - path: examples/basic-swiftui-app
+    description: Single-target SwiftUI app, real xcodeproj, unsigned builder build verified by CI
+  - path: examples/flutter-hot-reload
+    description: Design document for the Flutter hot reload loop over MobAI (no code yet)
+  - path: examples/rn-hot-reload
+    description: Design document for the React Native Metro hot reload loop (no code yet)
+
+templates:
+  - path: templates/swiftui-starter
+    description: Canonical SwiftUI template rendered by init_ios_project.py (placeholders __APP_NAME__ etc.)
+  - path: templates/flutter-starter
+    description: Flutter config template; the ios/ host project is generated by flutter create
+  - path: templates/react-native-starter
+    description: React Native config template; the ios/ host project is generated by the RN CLI
+
+tech_stack:
+  data_as_of: "2026-09"
+  language: Swift 6.2 language mode (Xcode 26+); templates compile with SWIFT_VERSION 6.0 so they build on 16.x images
+  deployment_target: "17.0"
+  ui: SwiftUI
+  package_manager: Swift Package Manager (primary), CocoaPods (compat branch)
+  build_system: xcodebuild on GitHub Actions macOS runners
+  remote_builder:
+    name: MobAI ios-builder
+    repository: https://github.com/MobAI-App/ios-builder
+    version_verified: v0.11.0
+    published_at: "2026-09-17"
+    install: curl -sSL https://raw.githubusercontent.com/MobAI-App/ios-builder/main/install.sh | bash
+    homebrew: brew install mobai-app/tap/ios-builder
+  device_bridge:
+    name: MobAI
+    default_url: http://localhost:8686
+    site: https://mobai.run
+  verification_links:
+    - https://developer.apple.com/news/releases/
+    - https://github.com/actions/runner-images
+    - https://github.com/MobAI-App/ios-builder/releases
+
+license: MIT
+author: your-org
+homepage: https://github.com/your-org/ios-gradle-skills

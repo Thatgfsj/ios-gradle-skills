@@ -1,0 +1,236 @@
+# iOS Build —— builder/ios-build.yml.template
+#
+# 本文件是 `.github/workflows/ios-build.yml` 的**精简等价模板**，供两类场景使用：
+#   1. 无 CLI 环境下手工接入远程构建；
+#   2. 与 `builder init` 生成的权威 workflow 做 diff（校验上游是否改了参数）。
+#
+# 权威版本由 `builder init` 写入（上游 internal/workflow/templates/ios-build.yml，
+# 约 69 KB，含 Flutter / RN / Expo / CocoaPods / KMP 分支与 DerivedData 缓存）。
+# 本模板刻意只保留原生 SwiftUI 主链路，并**保持同名同序的 10 个 workflow_dispatch
+# inputs**——`builder ios build` 按名字传参，名字对不上就报
+# "Unknown input: xxx"；profile 相关字段挤在单个 `profile` JSON input 里，
+# 是为了停在 workflow_dispatch 的 10 个 input 上限内。
+#
+# 数据截至 2026-09（ios-builder v0.11.0）。
+name: iOS Build
+
+run-name: iOS Build ${{ inputs.build_id || github.ref_name }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_id:
+        description: "Unique id assigned by the builder CLI"
+        required: true
+        type: string
+      snapshot_ref:
+        description: "Hidden ref holding the working-tree snapshot (empty = build the checked-out commit)"
+        required: false
+        type: string
+        default: ""
+      ios_path:
+        description: "Path to the Xcode project, relative to the repo root"
+        required: false
+        type: string
+        default: "."
+      scheme:
+        description: "Xcode scheme (empty = auto-detect from the project)"
+        required: false
+        type: string
+        default: ""
+      use_signing:
+        description: "Sign the IPA with the repository secrets"
+        required: false
+        type: boolean
+        default: false
+      configuration:
+        description: "Xcode configuration"
+        required: false
+        type: string
+        default: "Debug"
+      flutter_version:
+        description: "Pinned Flutter version (empty = latest stable)"
+        required: false
+        type: string
+        default: ""
+      jdk_version:
+        description: "JDK for Gradle-driven projects (Kotlin Multiplatform)"
+        required: false
+        type: string
+        default: "17"
+      profile:
+        description: 'Selected builder.json profile as JSON: {"name": "...", "env": {...}, "distribution": "..."}'
+        required: false
+        type: string
+        default: "{}"
+      build_number:
+        description: "CFBundleVersion to stamp: N, or X.Y.Z+N to set the marketing version too"
+        required: false
+        type: string
+        default: ""
+  push:
+    tags:
+      - "ios-build/*"
+
+permissions:
+  contents: write # 用于删除触发用的 tag
+
+jobs:
+  build:
+    # 上游 v0.11.0 模板写 macos-latest；本仓库固定到 macos-15 以保证可复现
+    # （macos-latest 会随镜像迁移改变预装 Xcode）。label 不可用时改回 macos-latest。
+    runs-on: macos-15
+    timeout-minutes: 90 # 免费档上限；冷启动的 RN/Expo 构建约 30-60 分钟
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Checkout working-tree snapshot
+        if: ${{ inputs.snapshot_ref != '' }}
+        run: |
+          set -euo pipefail
+          git fetch --depth=1 origin "+${{ inputs.snapshot_ref }}:refs/heads/snapshot"
+          git checkout --force --detach refs/heads/snapshot
+          echo "Building snapshot ${{ inputs.snapshot_ref }} @ $(git rev-parse --short HEAD)"
+
+      - name: Resolve parameters
+        id: params
+        run: |
+          set -euo pipefail
+          CFG="builder.json"
+          if [ ! -f "$CFG" ]; then echo "::error::仓库缺少 builder.json（运行 builder init 生成）"; exit 1; fi
+          # tag 触发没有 inputs，一切回落 builder.json；workflow_dispatch 的显式参数优先。
+          scheme="${{ inputs.scheme }}"
+          [ -z "$scheme" ] && scheme="$(jq -r '.ios.scheme // ""' "$CFG")"
+          ios_path="${{ inputs.ios_path }}"
+          [ "$ios_path" = "." ] && ios_path="$(jq -r '.ios.path // "."' "$CFG")"
+          # tag 触发时 inputs 全为空串，configuration 必须回落 builder.json
+          configuration="${{ inputs.configuration }}"
+          [ -z "$configuration" ] && configuration="$(jq -r '.ios.configuration // "Debug"' "$CFG")"
+          use_signing="${{ inputs.use_signing }}"
+          distribution="$(jq -r '.distribution // ""' <<<"${{ inputs.profile }}")"
+          if [ -z "$distribution" ] && [ "$(jq -r 'keys | length' <<<"${{ inputs.profile }}")" = "0" ]; then
+            # 未选 profile：沿用 legacy 的 ios.signing + 无后缀 Secrets
+            use_signing="$(jq -r 'if .ios.signing then "true" else "false" end' "$CFG")"
+          fi
+          {
+            echo "scheme=$scheme"
+            echo "ios_path=$ios_path"
+            echo "configuration=$configuration"
+            echo "use_signing=$use_signing"
+            echo "distribution=$distribution"
+            echo "build_number=${{ inputs.build_number }}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Setup Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Install certificate and provisioning profile
+        if: ${{ steps.params.outputs.use_signing == 'true' }}
+        # 上游把这一步写成静态 step + 按 distribution 选 Secrets 后缀集合：
+        #   "" -> IOS_CERTIFICATE / IOS_CERTIFICATE_PASSWORD / IOS_PROVISIONING_PROFILE
+        #   development -> *_DEVELOPMENT；ad-hoc|internal -> *_AD_HOC
+        #   store -> *_STORE；enterprise -> *_ENTERPRISE（+ 第四件 IOS_EXTENSION_PROFILES_<SET>）
+        env:
+          IOS_CERTIFICATE: ${{ secrets.IOS_CERTIFICATE }}
+          IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
+          IOS_PROVISIONING_PROFILE: ${{ secrets.IOS_PROVISIONING_PROFILE }}
+          IOS_CERTIFICATE_DEVELOPMENT: ${{ secrets.IOS_CERTIFICATE_DEVELOPMENT }}
+          IOS_CERTIFICATE_PASSWORD_DEVELOPMENT: ${{ secrets.IOS_CERTIFICATE_PASSWORD_DEVELOPMENT }}
+          IOS_PROVISIONING_PROFILE_DEVELOPMENT: ${{ secrets.IOS_PROVISIONING_PROFILE_DEVELOPMENT }}
+          IOS_CERTIFICATE_STORE: ${{ secrets.IOS_CERTIFICATE_STORE }}
+          IOS_CERTIFICATE_PASSWORD_STORE: ${{ secrets.IOS_CERTIFICATE_PASSWORD_STORE }}
+          IOS_PROVISIONING_PROFILE_STORE: ${{ secrets.IOS_PROVISIONING_PROFILE_STORE }}
+        run: |
+          set -euo pipefail
+          KEYCHAIN_KEYCHAIN="$RUNNER_TEMP/builder.keychain"
+          KEYCHAIN_PASSWORD="$(openssl rand -hex 16)"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_KEYCHAIN"
+          security default-keychain -s "$KEYCHAIN_KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_KEYCHAIN"
+          CERT="$IOS_CERTIFICATE"; PASS="$IOS_CERTIFICATE_PASSWORD"; PROV="$IOS_PROVISIONING_PROFILE"
+          case "${{ steps.params.outputs.distribution }}" in
+            development) CERT="$IOS_CERTIFICATE_DEVELOPMENT"; PASS="$IOS_CERTIFICATE_PASSWORD_DEVELOPMENT"; PROV="$IOS_PROVISIONING_PROFILE_DEVELOPMENT" ;;
+            store)       CERT="$IOS_CERTIFICATE_STORE";       PASS="$IOS_CERTIFICATE_PASSWORD_STORE";       PROV="$IOS_PROVISIONING_PROFILE_STORE" ;;
+          esac
+          [ -n "$CERT" ] || { echo "::error::缺少证书 Secret（distribution=${{ steps.params.outputs.distribution }}）"; exit 1; }
+          echo "$CERT" | base64 --decode > "$RUNNER_TEMP/signing.p12"
+          security import "$RUNNER_TEMP/signing.p12" -k "$KEYCHAIN_KEYCHAIN" -P "$PASS" -T /usr/bin/codesign -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_KEYCHAIN"
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+          echo "$PROV" | base64 --decode > "$RUNNER_TEMP/profile.mobileprovision"
+          echo "KEYCHAIN_PATH=$KEYCHAIN_KEYCHAIN" >> "$GITHUB_ENV"
+          echo "KEYCHAIN_PASSWORD=$KEYCHAIN_PASSWORD" >> "$GITHUB_ENV"
+          echo "PROVISIONING_PROFILE_PATH=$RUNNER_TEMP/profile.mobileprovision" >> "$GITHUB_ENV"
+
+      - name: Build IPA
+        run: |
+          set -euo pipefail
+          cd "${{ steps.params.outputs.ios_path }}"
+
+          # 工程容器：有 .xcworkspace（CocoaPods）优先，否则 .xcodeproj
+          if ls -d *.xcworkspace >/dev/null 2>&1; then
+            PROJECT_ARGS=(-workspace "$(ls -d *.xcworkspace | head -1)")
+          else
+            PROJECT_ARGS=(-project "$(ls -d *.xcodeproj | head -1)")
+          fi
+
+          # scheme 缺省时取工程文件名：本仓库模板的 scheme 与 target 同名
+          SCHEME="${{ steps.params.outputs.scheme }}"
+          [ -z "$SCHEME" ] && SCHEME="$(basename "${PROJECT_ARGS[1]}" .xcodeproj)"
+          SCHEME_ARGS=(-scheme "$SCHEME")
+
+          if [ "${{ steps.params.outputs.use_signing }}" = "true" ]; then
+            # 证书已导入临时 keychain、描述文件已落盘，交给 Xcode 自动匹配
+            SIGN_ARGS=(-allowProvisioningUpdates)
+            [ -n "${DEVELOPMENT_TEAM:-}" ] && SIGN_ARGS+=("DEVELOPMENT_TEAM=$DEVELOPMENT_TEAM")
+          else
+            SIGN_ARGS=(CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="")
+          fi
+
+          NUMBER_ARGS=()
+          if [ -n "${{ steps.params.outputs.build_number }}" ]; then
+            BN="${{ steps.params.outputs.build_number }}"
+            case "$BN" in
+              *+) NUMBER_ARGS=(MARKETING_VERSION="${BN%+*}" CURRENT_PROJECT_VERSION="${BN##*+}") ;;
+              *)  NUMBER_ARGS=(CURRENT_PROJECT_VERSION="$BN") ;;
+            esac
+          fi
+
+          DERIVED="$RUNNER_TEMP/DD"
+          xcodebuild build \
+            "${PROJECT_ARGS[@]}" "${SCHEME_ARGS[@]}" \
+            -configuration "${{ steps.params.outputs.configuration }}" \
+            -sdk iphoneos -destination "generic/platform=iOS" \
+            -derivedDataPath "$DERIVED" \
+            "${SIGN_ARGS[@]}" "${NUMBER_ARGS[@]}"
+
+          APP="$(find "$DERIVED/Build/Products" -maxdepth 2 -name '*.app' -type d | head -1)"
+          [ -n "$APP" ] || { echo "::error::未找到 .app 产物"; exit 1; }
+          mkdir -p "$GITHUB_WORKSPACE/build/IPA/Payload"
+          cp -R "$APP" "$GITHUB_WORKSPACE/build/IPA/Payload/"
+          (cd "$GITHUB_WORKSPACE/build/IPA" && zip -qry app.ipa Payload)
+          mv "$GITHUB_WORKSPACE/build/IPA/app.ipa" "$GITHUB_WORKSPACE/build/$(basename "$APP" .app).ipa"
+          ls -la "$GITHUB_WORKSPACE/build"
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ipa
+          path: build/*.ipa
+          retention-days: 7
+          if-no-files-found: error
+
+      - name: Cleanup signing
+        if: ${{ always() && steps.params.outputs.use_signing == 'true' }}
+        run: |
+          security delete-keychain "$KEYCHAIN_PATH" 2>/dev/null || true
+          rm -f "$RUNNER_TEMP/signing.p12" "$RUNNER_TEMP/profile.mobileprovision"
+
+      - name: Delete trigger tag
+        if: ${{ always() && github.ref_type == 'tag' }}
+        run: git push origin --delete "$GITHUB_REF_NAME" || true

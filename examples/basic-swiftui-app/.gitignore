@@ -1,0 +1,33 @@
+# Xcode
+xcuserdata/
+*.xcuserstate
+DerivedData/
+build/
+
+# 构建产物（builder ios build 的下载目录）
+dist/
+*.ipa
+*.dSYM.zip
+
+# 签名材料：绝不入库
+*.p12
+*.key
+*.cer
+*.csr
+*.mobileprovision
+ios-signing-*
+
+# Swift Package Manager
+.build/
+.swiftpm/
+
+# Node / Flutter（若后续引入）
+node_modules/
+ios/Pods/
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# 其他
+.env
+*.log
+.DS_Store

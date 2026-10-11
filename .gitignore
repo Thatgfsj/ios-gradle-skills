@@ -1,0 +1,51 @@
+# macOS / Xcode
+xcuserdata/
+*.xcuserstate
+*.xcscmblueprint
+DerivedData/
+build/
+Dist/
+dist/
+*.ipa
+*.dSYM.zip
+*.mobileprovision
+*.p12
+*.cer
+*.csr
+ios-signing*.key
+.noindex
+
+# Swift Package Manager
+.build/
+.swiftpm/
+Package.resolved
+
+# CocoaPods（仅用于兼容分支；模板工程不引入）
+Pods/
+
+# Node / React Native
+node_modules/
+ios/Pods/
+ios/build/
+metro-out/
+
+# Flutter
+.flutter-plugins
+.flutter-plugins-dependencies
+ios/.symlinks/
+ios/Flutter/Flutter.framework/
+ios/Flutter/Flutter.xcframework/
+
+# 敏感信息
+.env
+.env.*
+AuthKey_*.p8
+builder.local.json
+
+# 其他
+*.log
+.DS_Store
+__pycache__/
+*.pyc
+# patch_builder_config.py --write 的备份
+*.bak

@@ -1,0 +1,34 @@
+{
+  "project": "BasicApp",
+  "platform": "ios",
+  "github": {
+    "owner": "YOUR_GITHUB_USER",
+    "repo": "YOUR_REPO"
+  },
+  "ios": {
+    "path": ".",
+    "scheme": "BasicApp",
+    "bundleId": "com.example.basicapp",
+    "configuration": "Debug",
+    "signing": false
+  },
+  "mobai": {
+    "url": "http://localhost:8686",
+    "device_id": ""
+  },
+  "flutter": {
+    "watch": {
+      "dirs": [
+        "lib"
+      ],
+      "patterns": [
+        ".dart"
+      ],
+      "ignore": [
+        ".g.dart",
+        ".freezed.dart"
+      ],
+      "debounce": 100
+    }
+  }
+}

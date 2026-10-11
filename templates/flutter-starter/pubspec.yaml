@@ -1,0 +1,20 @@
+name: __APP_NAME__
+description: Flutter iOS starter wired to ios-gradle-skills (remote xcodebuild via builder CLI).
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+# 本模板刻意不钉三方库版本：iOS 构建只关心 ios/ 宿主工程与远程 runner。
+# 需要插件时按 https://pub.dev 当前稳定版自行添加；新增含原生代码的插件后必须重建 IPA。
+dependencies:
+  flutter:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true

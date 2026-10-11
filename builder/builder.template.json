@@ -1,0 +1,46 @@
+{
+  "project": "MyApp",
+  "platform": "ios",
+  "provider": "github",
+  "github": {
+    "owner": "YOUR_GITHUB_USER",
+    "repo": "YOUR_REPO"
+  },
+  "ios": {
+    "path": ".",
+    "scheme": "MyApp",
+    "bundleId": "com.example.myapp",
+    "configuration": "Debug",
+    "signing": false,
+    "extensions": []
+  },
+  "mobai": {
+    "url": "http://localhost:8686",
+    "device_id": ""
+  },
+  "reactNative": {
+    "metroPort": 8081,
+    "expo": false
+  },
+  "flutter": {
+    "version": "",
+    "watch": {
+      "dirs": ["lib"],
+      "patterns": [".dart"],
+      "ignore": [".g.dart", ".freezed.dart"],
+      "debounce": 100
+    }
+  },
+  "kmp": {
+    "jdkVersion": "17"
+  },
+  "defaultProfile": "",
+  "profiles": {
+    "development": { "distribution": "development" },
+    "store": { "distribution": "store" }
+  },
+  "signing": {
+    "dir": ""
+  },
+  "_comment": "本文件是 ios-gradle-skills 的单一配置来源（对标 android-gradle-skills 的 gradle/libs.versions.toml）。字段与默认值对齐 MobAI-App/ios-builder v0.11.0（数据截至 2026-09-17）。复制到项目根后删除本 _comment，并按 ios-builder/references/builder-json-schema.md 校准。带 distribution 的 profile 会走分后缀 Secrets（IOS_CERTIFICATE_STORE 等）；若要沿用无后缀三件套，删掉 defaultProfile/profiles 并把 ios.signing 置 true。"
+}

@@ -1,0 +1,197 @@
+# 校验本仓库内容的有效性，并真实构建 examples/basic-swiftui-app。
+#
+# 三个 job：
+#   lint          —— ubuntu 上跑：Python 语法、YAML/JSON 可解析、SKILL.md 规范自检
+#   build-example —— macos-15 上用 xcodebuild 真实编译示例并产出 Unsigned IPA
+#   builder-e2e   —— 可选：装 builder CLI 走完整远程通道（默认关闭，见下方说明）
+#
+# 为什么 builder-e2e 默认关闭：
+#   `builder ios build` 会把工作区快照推到 refs/ios-builder/jobs/<id> 并触发同一个仓库的
+#   ios-build.yml，需要一个已登录 GitHub 的凭据（builder auth github 走设备码 OAuth，
+#   无法在无人值守的 CI 里完成）。因此该 job 只在仓库 Variables 里显式打开
+#   ENABLE_BUILDER_E2E=true 且 secrets.ACTIONS_BUILDER_TOKEN 存在时运行。
+name: Validate
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Python 脚本语法检查
+        run: |
+          python -m py_compile \
+            ios-builder/scripts/init_ios_project.py \
+            ios-builder/scripts/ai/analyze_build_log.py \
+            ios-builder/scripts/ai/patch_builder_config.py \
+            ios-builder/scripts/ops/trigger_build.py \
+            ios-builder/scripts/ops/check_signing_secrets.py \
+            ios-builder/scripts/ops/lint_skill.py
+
+      - name: 安装依赖
+        run: pip install pyyaml
+
+      - name: SKILL.md 规范与命令矩阵自检
+        run: python ios-builder/scripts/ops/lint_skill.py
+
+      - name: JSON / YAML 可解析
+        run: |
+          python - <<'PY'
+          import json, pathlib, sys, yaml
+          bad = 0
+          for p in sorted(pathlib.Path(".").rglob("*.json")):
+              if ".git/" in str(p) or p.name == "package-lock.json":
+                  continue
+              try:
+                  json.loads(p.read_text(encoding="utf-8"))
+                  print("JSON OK:", p)
+              except json.JSONDecodeError as e:
+                  bad += 1
+                  print("JSON FAIL:", p, e, file=sys.stderr)
+          targets = sorted(pathlib.Path(".").rglob("*.yml")) + [
+              pathlib.Path("builder/ios-build.yml.template")]
+          for p in targets:
+              try:
+                  yaml.safe_load(p.read_text(encoding="utf-8"))
+                  print("YAML OK:", p)
+              except yaml.YAMLError as e:
+                  bad += 1
+                  print("YAML FAIL:", p, e, file=sys.stderr)
+          sys.exit(1 if bad else 0)
+          PY
+
+      - name: 模板渲染冒烟测试（三种形态各跑一次）
+        run: |
+          set -euo pipefail
+          for fw in swiftui flutter react-native; do
+            python ios-builder/scripts/init_ios_project.py SmokeApp -o "$RUNNER_TEMP/$fw" \
+              --framework "$fw" --owner octocat --repo smoke --unsigned
+            python - "$RUNNER_TEMP/$fw/SmokeApp/builder.json" <<'PY'
+          import json, sys
+          cfg = json.loads(open(sys.argv[1], encoding="utf-8").read())
+          assert cfg["github"] == {"owner": "octocat", "repo": "smoke"}, cfg["github"]
+          assert cfg["ios"]["signing"] is False, cfg["ios"]
+          print("smoke OK:", cfg["platform"], cfg["ios"]["path"], cfg["ios"]["scheme"])
+          PY
+          done
+          test -f "$RUNNER_TEMP/swiftui/SmokeApp/SmokeApp.xcodeproj/project.pbxproj"
+          test -f "$RUNNER_TEMP/swiftui/SmokeApp/.github/workflows/ios-build.yml"
+          grep -q "runs-on: macos-15" "$RUNNER_TEMP/swiftui/SmokeApp/.github/workflows/ios-build.yml"
+
+  build-example:
+    runs-on: macos-15
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Show toolchain
+        run: |
+          sw_vers
+          xcodebuild -version
+          xcodebuild -showsdks | grep -i "iphoneos" || true
+
+      - name: Build example app
+        working-directory: examples/basic-swiftui-app
+        run: |
+          set -euo pipefail
+          xcodebuild -list -project BasicApp.xcodeproj
+          xcodebuild build \
+            -project BasicApp.xcodeproj -scheme BasicApp \
+            -configuration Debug -sdk iphoneos \
+            -destination "generic/platform=iOS" \
+            -derivedDataPath "$RUNNER_TEMP/DD" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=""
+
+      - name: Package unsigned IPA
+        working-directory: examples/basic-swiftui-app
+        run: |
+          set -euo pipefail
+          APP="$(find "$RUNNER_TEMP/DD/Build/Products" -maxdepth 2 -name '*.app' -type d | head -1)"
+          test -n "$APP"
+          mkdir -p dist/Payload
+          cp -R "$APP" dist/Payload/
+          (cd dist && zip -qry app.ipa Payload)
+          mv dist/app.ipa "dist/BasicApp-unsigned.ipa"
+          ls -la dist
+
+      - name: Upload unsigned IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: example-unsigned-ipa
+          path: examples/basic-swiftui-app/dist/*.ipa
+
+      - name: Validate builder config of the example
+        run: |
+          python - <<'PY'
+          import json, pathlib
+          cfg = json.loads(pathlib.Path("examples/basic-swiftui-app/builder.json").read_text(encoding="utf-8"))
+          assert cfg["ios"]["path"] == ".", cfg["ios"]
+          assert cfg["ios"]["scheme"] == "BasicApp", cfg["ios"]
+          assert cfg["ios"]["signing"] is False, "示例必须默认 unsigned，否则 CI 会去要签名 Secrets"
+          print("example builder.json OK:", cfg["project"])
+          PY
+
+  builder-e2e:
+    # 可选：走完整 builder 远程通道。仅在显式打开时运行（见文件头注释）。
+    # 注意：jobs.<job_id>.if 里拿不到 secrets 上下文，所以 token 缺失由下面第一步显式拦下。
+    if: ${{ vars.ENABLE_BUILDER_E2E == 'true' }}
+    runs-on: macos-15
+    needs: build-example
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Require ACTIONS_BUILDER_TOKEN
+        env:
+          BUILDER_TOKEN: ${{ secrets.ACTIONS_BUILDER_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${BUILDER_TOKEN:-}" ]; then
+            echo "::error::ENABLE_BUILDER_E2E=true 但 secrets.ACTIONS_BUILDER_TOKEN 为空，无法无人值守地完成 GitHub 授权"
+            exit 1
+          fi
+
+      - name: Install builder CLI
+        run: curl -sSL https://raw.githubusercontent.com/MobAI-App/ios-builder/main/install.sh | bash
+
+      - name: Point builder.json at this repository
+        working-directory: examples/basic-swiftui-app
+        run: |
+          set -euo pipefail
+          OWNER="${GITHUB_REPOSITORY%%/*}"
+          REPO="${GITHUB_REPOSITORY##*/}"
+          python ../../ios-builder/scripts/ai/patch_builder_config.py \
+            --project . --owner "$OWNER" --repo "$REPO" --unsigned --write
+          grep -q "\"owner\": \"$OWNER\"" builder.json
+
+      - name: builder init
+        working-directory: examples/basic-swiftui-app
+        env:
+          GH_TOKEN: ${{ secrets.ACTIONS_BUILDER_TOKEN }}
+        run: builder init --yes
+
+      - name: builder ios build --unsigned
+        working-directory: examples/basic-swiftui-app
+        env:
+          GH_TOKEN: ${{ secrets.ACTIONS_BUILDER_TOKEN }}
+        run: builder ios build --unsigned
+
+      - name: Upload remote-built IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: builder-e2e-ipa
+          path: examples/basic-swiftui-app/dist/*.ipa

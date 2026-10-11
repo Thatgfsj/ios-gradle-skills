@@ -1,0 +1,14 @@
+# 行尾规则：shell/python 脚本必须保持 LF（否则 WSL/macOS 上 "\r: command not found"）
+* text=auto
+*.sh text eol=lf
+*.py text eol=lf
+*.swift text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.pbxproj text eol=lf
+bat eol=crlf
+*.png binary
+*.jpg binary
+*.ipa binary
+*.p12 binary
+*.mobileprovision binary

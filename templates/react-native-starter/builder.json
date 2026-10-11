@@ -1,0 +1,19 @@
+{
+  "project": "__APP_NAME__",
+  "platform": "ios",
+  "github": {
+    "owner": "__GH_OWNER__",
+    "repo": "__GH_REPO__"
+  },
+  "ios": {
+    "path": "ios",
+    "scheme": "__APP_NAME__",
+    "bundleId": "__BUNDLE_ID__",
+    "configuration": "Debug",
+    "signing": __SIGNING__
+  },
+  "mobai": {
+    "url": "http://localhost:8686",
+    "device_id": ""
+  }
+}

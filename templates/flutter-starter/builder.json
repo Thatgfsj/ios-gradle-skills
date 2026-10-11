@@ -1,0 +1,27 @@
+{
+  "project": "__APP_NAME__",
+  "platform": "ios",
+  "github": {
+    "owner": "__GH_OWNER__",
+    "repo": "__GH_REPO__"
+  },
+  "ios": {
+    "path": "ios",
+    "scheme": "Runner",
+    "bundleId": "__BUNDLE_ID__",
+    "configuration": "Debug",
+    "signing": __SIGNING__
+  },
+  "mobai": {
+    "url": "http://localhost:8686",
+    "device_id": ""
+  },
+  "flutter": {
+    "watch": {
+      "dirs": ["lib"],
+      "patterns": [".dart"],
+      "ignore": [".g.dart", ".freezed.dart"],
+      "debounce": 100
+    }
+  }
+}
