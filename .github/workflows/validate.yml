@@ -47,15 +47,23 @@ jobs:
       - name: JSON / YAML 可解析
         run: |
           python - <<'PY'
-          import json, pathlib, sys, yaml
+          import json, pathlib, re, sys, yaml
+          PLACEHOLDER = re.compile(r"__[A-Z][A-Z0-9_]*__")
           bad = 0
           for p in sorted(pathlib.Path(".").rglob("*.json")):
-              if ".git/" in str(p) or p.name == "package-lock.json":
+              sp = p.as_posix()
+              if ".git/" in sp or p.name == "package-lock.json":
                   continue
+              text = p.read_text(encoding="utf-8")
               try:
-                  json.loads(p.read_text(encoding="utf-8"))
+                  json.loads(text)
                   print("JSON OK:", p)
               except json.JSONDecodeError as e:
+                  # templates/ 里的 "signing": __SIGNING__ 之类是裸占位 token，
+                  # 渲染后才成布尔值——故意不是合法 JSON，由冒烟测试负责渲染后校验。
+                  if sp.startswith("templates/") and PLACEHOLDER.search(text):
+                      print("JSON SKIP (模板占位符，交给冒烟测试):", p)
+                      continue
                   bad += 1
                   print("JSON FAIL:", p, e, file=sys.stderr)
           targets = sorted(pathlib.Path(".").rglob("*.yml")) + [
@@ -76,12 +84,19 @@ jobs:
           for fw in swiftui flutter react-native; do
             python ios-builder/scripts/init_ios_project.py SmokeApp -o "$RUNNER_TEMP/$fw" \
               --framework "$fw" --owner octocat --repo smoke --unsigned
-            python - "$RUNNER_TEMP/$fw/SmokeApp/builder.json" <<'PY'
-          import json, sys
-          cfg = json.loads(open(sys.argv[1], encoding="utf-8").read())
+            python - "$RUNNER_TEMP/$fw/SmokeApp" <<'PY'
+          import json, pathlib, re, sys, yaml
+          root = pathlib.Path(sys.argv[1])
+          cfg = json.loads((root / "builder.json").read_text(encoding="utf-8"))
           assert cfg["github"] == {"owner": "octocat", "repo": "smoke"}, cfg["github"]
           assert cfg["ios"]["signing"] is False, cfg["ios"]
-          print("smoke OK:", cfg["platform"], cfg["ios"]["path"], cfg["ios"]["scheme"])
+          wf = root / ".github/workflows/ios-build.yml"
+          yaml.safe_load(wf.read_text(encoding="utf-8"))      # 渲染产物必须是合法 YAML
+          for p in [root / "builder.json", wf]:
+              left = re.findall(r"__[A-Z][A-Z0-9_]*__", p.read_text(encoding="utf-8"))
+              assert not left, f"{p} 残留未替换占位符：{left}"
+          print("smoke OK:", cfg["platform"], cfg["ios"]["path"], cfg["ios"]["scheme"],
+                "| builder.json + workflow 渲染后可解析、无残留占位符")
           PY
           done
           test -f "$RUNNER_TEMP/swiftui/SmokeApp/SmokeApp.xcodeproj/project.pbxproj"

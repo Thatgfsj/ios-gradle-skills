@@ -52,6 +52,7 @@ GENERATED_ALLOWLIST = {
 
 failures: list = []
 warnings: list = []
+notes: list = []
 
 
 def fail(check: str, message: str) -> None:
@@ -64,6 +65,10 @@ def warn(check: str, message: str) -> None:
 
 def ok(check: str, message: str) -> None:
     print(f"OK    [{check}] {message}")
+
+
+def note(check: str, message: str) -> None:
+    notes.append(f"NOTE  [{check}] {message}")
 
 
 def repo_root(argv: list) -> Path:
@@ -356,6 +361,52 @@ def strip_pbx_noise(text: str) -> str:
     return re.sub(r'"(?:[^"\\]|\\.)*"', '""', no_comments)
 
 
+PLACEHOLDER_RE = re.compile(r"__[A-Z][A-Z0-9_]*__")
+
+
+def check_data_files(root: Path) -> None:
+    """与 validate.yml 的同一套规则：JSON 必须可解析；templates/ 里带裸占位 token 的除外。
+    YAML 只在装了 pyyaml 时校验（与 CI 对齐），否则报 NOTE。"""
+    bad_json, skipped = [], []
+    for p in sorted(root.rglob("*.json")):
+        if ".git" in p.parts:
+            continue
+        sp = p.relative_to(root).as_posix()      # 与 validate.yml 一样用仓库相对路径判断
+        if p.name == "package-lock.json":
+            continue
+        text = p.read_text(encoding="utf-8")
+        try:
+            json.loads(text)
+        except json.JSONDecodeError as e:
+            if sp.startswith("templates/") and PLACEHOLDER_RE.search(text):
+                skipped.append(sp)
+            else:
+                bad_json.append(f"{sp}: {e}")
+    if bad_json:
+        for item in bad_json:
+            fail("data-files", f"JSON 解析失败 {item}")
+    else:
+        ok("data-files", f"JSON 全部可解析（{len(skipped)} 个模板占位文件按规则跳过）")
+
+    if not HAVE_YAML:
+        note("data-files", "未装 pyyaml，YAML 校验跳过（CI 里会跑）")
+        return
+    bad_yaml = []
+    targets = sorted(root.rglob("*.yml")) + [root / "builder" / "ios-build.yml.template"]
+    for p in targets:
+        if ".git/" in p.as_posix() or not p.is_file():
+            continue
+        try:
+            yaml.safe_load(p.read_text(encoding="utf-8"))
+        except yaml.YAMLError as e:
+            bad_yaml.append(f"{p.relative_to(root).as_posix()}: {e}")
+    if bad_yaml:
+        for item in bad_yaml:
+            fail("data-files", f"YAML 解析失败 {item}")
+    else:
+        ok("data-files", "YAML（含 workflow 模板）全部可解析")
+
+
 def check_xcodeproj(root: Path) -> None:
     """校验 examples/ 下真实工程：pbxproj 结构完整、ID 引用可解析、scheme 指得到 target。"""
     found = False
@@ -447,6 +498,7 @@ def main(argv: list) -> int:
     check_references(root, body, claw_text)
     check_error_codes(root, body)
     check_xcodeproj(root)
+    check_data_files(root)
 
     print()
     for line in warnings:
@@ -458,6 +510,8 @@ def main(argv: list) -> int:
         return 1
     if not HAVE_YAML:
         print("NOTE  未安装 pyyaml，claw-skill.yaml 深度校验已跳过（pip install pyyaml 后重跑）")
+    for line in notes:
+        print(line)
     print(f"\n结果：全部通过（{len(warnings)} 项 WARN）")
     return 0
 
